@@ -33,16 +33,16 @@ def build_loss(mode: str, lambda_soft_f1: float = 1.0, pos_weight: torch.Tensor 
 
     if mode == "bce_softf1":
         class CombinedLoss(nn.Module):
-            def __init__(self, lam: float, pos_weight_inner: torch.Tensor | None):
+            def __init__(self, lam: float):
                 super().__init__()
-                # Use the same pos_weight as in pure BCE mode to handle class imbalance.
-                self.bce = nn.BCEWithLogitsLoss(pos_weight=pos_weight_inner)
+                # Paper reproduction: plain BCE (no pos_weight) + lambda * MacroSoftF1.
+                self.bce = nn.BCEWithLogitsLoss()
                 self.soft_f1 = MacroSoftF1Loss()
                 self.lam = lam
 
             def forward(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
                 return self.bce(logits, targets) + self.lam * self.soft_f1(logits, targets)
 
-        return CombinedLoss(lambda_soft_f1, pos_weight)
+        return CombinedLoss(lambda_soft_f1)
 
     raise ValueError(f"loss mode must be 'bce' or 'bce_softf1'; got {mode!r}")

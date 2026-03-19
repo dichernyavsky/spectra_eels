@@ -90,8 +90,6 @@ class EELSDataset(Dataset):
         x = np.asarray(h5f[SPECTRA_KEY][row], dtype=np.float32)
         y = np.asarray(h5f[LABELS_KEY][row], dtype=np.float32)
         mask = (x != 0).astype(np.float32)
-        # Min-max normalize each spectrum to [0, 1]
-        x = x / x.max() 
 
         x = x[np.newaxis, :]  # [1, 3072]
         mask = mask[np.newaxis, :]  # [1, 3072]

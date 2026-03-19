@@ -1,0 +1,37 @@
+# Baseline config: paper-like 1D U-Net + training protocol that worked well.
+# Use this as reference when experimenting with other models (same protocol, different model).
+
+# Model (registry name + constructor kwargs)
+model:
+  name: paper_unet
+  num_classes: 80
+  activation: relu
+  dropout_p: 0.3
+
+# Data
+root: EELS
+batch_size: 32
+num_workers: 4
+
+# Training protocol
+epochs: 10
+lr: 0.001
+weight_decay: 0.0
+steps_per_epoch: 1000
+
+# Loss (paper: BCE + MacroSoftF1)
+loss_mode: bce_softf1
+lambda_soft_f1: 1.0
+
+# Logging and checkpointing
+threshold: 0.8
+save_dir: checkpoints
+
+# Hardware
+device: cuda
+multi_gpu: false
+
+# Smoke run (quick sanity check)
+smoke: false
+smoke_max_train_batches: 2
+smoke_max_val_batches: 1

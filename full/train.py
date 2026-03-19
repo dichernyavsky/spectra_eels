@@ -1,7 +1,9 @@
 """
 Minimal training script for EELS multi-label classification.
+
+Config: use --config path/to/config.yaml or --config paper_unet to load a saved
+model + training protocol. Default (no --config) uses the same baseline as configs/paper_unet.yaml.
 """
-from dataclasses import dataclass
 from pathlib import Path
 import time
 
@@ -9,33 +11,9 @@ import torch
 from torch.utils.data import DataLoader
 
 from dataset import EELSDataset, make_dataloader
-from model import EELSModel
+from config import TrainConfig, load_config, get_model
 from losses import build_loss
 from metrics import compute_metrics, threshold_sweep
-
-
-@dataclass
-class Config:
-    root: str = "EELS"
-    batch_size: int = 32
-    num_workers: int = 4
-    epochs: int = 10
-    lr: float = 1e-3
-    weight_decay: float = 1e-4
-    device: str = "cuda" if torch.cuda.is_available() else "cpu"
-    loss_mode: str = "bce_softf1"
-    lambda_soft_f1: float = 1.0
-    # Default reporting threshold for logging; model selection uses validation sweep.
-    threshold: float = 0.8
-    save_dir: str = "checkpoints"
-    # Use all visible GPUs via DataParallel (single node)
-    multi_gpu: bool = False
-    # Smoke: quick run (few batches) to verify pipeline
-    smoke: bool = False
-    smoke_max_train_batches: int = 2
-    smoke_max_val_batches: int = 1
-    # Steps per epoch for full training (paper uses 1000 steps/epoch, batch_size=32)
-    steps_per_epoch: int = 1000
 
 
 def train_one_epoch(
@@ -144,9 +122,13 @@ def evaluate(
     return avg_loss, metrics, logits, targets
 
 
-def main(cfg: Config | None = None) -> None:
+def main(cfg: TrainConfig | None = None) -> None:
     if cfg is None:
-        cfg = Config()
+        cfg = TrainConfig()
+    # Use CPU if config says cuda but no GPU is available
+    if cfg.device == "cuda" and not torch.cuda.is_available():
+        cfg.device = "cpu"
+        print("CUDA not available, using CPU")
     if cfg.smoke:
         # In smoke mode run fast to validate that the pipeline works.
         cfg.epochs = 1
@@ -180,8 +162,9 @@ def main(cfg: Config | None = None) -> None:
     p = prevalence.clamp(1e-4, 1.0 - 1e-4)
     pos_weight = (1.0 - p) / p
 
-    model = EELSModel().to(device)
-    model.init_bias_from_prevalence(prevalence.to(device))
+    model = get_model(cfg.model_name, **cfg.model_kwargs).to(device)
+    if hasattr(model, "init_bias_from_prevalence"):
+        model.init_bias_from_prevalence(prevalence.to(device))
     if cfg.multi_gpu and torch.cuda.device_count() > 1:
         model = torch.nn.DataParallel(model)
         print(f"Using DataParallel on {torch.cuda.device_count()} GPUs")
@@ -194,6 +177,8 @@ def main(cfg: Config | None = None) -> None:
         mode="max",
         factor=0.5,
         patience=3,
+        threshold=0.025,
+        threshold_mode="abs",
     )
     criterion = build_loss(
         cfg.loss_mode,
@@ -359,12 +344,24 @@ def main(cfg: Config | None = None) -> None:
 if __name__ == "__main__":
     import argparse
     p = argparse.ArgumentParser()
+    p.add_argument(
+        "--config",
+        type=str,
+        default=None,
+        help="Path to YAML config or preset name (e.g. paper_unet). Default: built-in baseline.",
+    )
     p.add_argument("--smoke", action="store_true", help="Smoke run: 1 epoch, few batches")
-    p.add_argument("--batch_size", type=int, default=None, help="Batch size (default: 32)")
-    p.add_argument("--num_workers", type=int, default=None, help="DataLoader workers (default: 4)")
+    p.add_argument("--batch_size", type=int, default=None, help="Override batch size")
+    p.add_argument("--num_workers", type=int, default=None, help="Override DataLoader workers")
     p.add_argument("--multi_gpu", action="store_true", help="Use all visible GPUs (DataParallel)")
     args = p.parse_args()
-    cfg = Config()
+
+    if args.config is not None:
+        cfg = load_config(args.config)
+        print(f"Loaded config: {args.config}")
+    else:
+        cfg = TrainConfig()
+
     if args.smoke:
         cfg.smoke = True
     if args.multi_gpu:
