@@ -9,14 +9,23 @@ build/
 
 # Paper codes and notebooks (local only)
 orig_paper_codes/
+models_from_paper/
 notebooks/
 
-# Data and checkpoints (large or local)
+# Data (large, local)
 full/EELS/
-full/checkpoints/
 single/EELS_single/
 single/EELS_single.tar.gz
+
+# Saved model weights and checkpoints (all locations)
+full/checkpoints/
 single/checkpoints_single/
+checkpoints/
+*.pt
+*.pth
+*.ckpt
+*.pt.tar
+*.pth.tar
 
 # IDE / env
 .venv/
